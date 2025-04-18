@@ -17,7 +17,14 @@ const startWebSocketServer = () => {
   const wss = new WebSocket.Server({ 
     server,
     cors: {
-      origin: ['http://localhost:5000', 'http://localhost:5173', 'http://127.0.0.1:5000', 'http://127.0.0.1:5173'],
+      origin: [
+        'http://localhost:5000', 
+        'http://localhost:5173', 
+        'http://127.0.0.1:5000', 
+        'http://127.0.0.1:5173',
+        'https://homeserve.host',
+        process.env.CLIENT_URL // Use the client URL from environment
+      ],
       credentials: true
     }
   });

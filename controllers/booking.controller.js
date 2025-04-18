@@ -141,7 +141,7 @@ exports.getBookingById = async (req, res) => {
 exports.updateBookingStatus = async (req, res) => {
   try {
     const bookingId = req.params.id;
-    const { status, notes } = req.body;
+    const { status, note, notes } = req.body;  // Extract both 'note' and 'notes' parameters
     const userId = req.user.id;
 
     // Validate status
@@ -173,11 +173,14 @@ exports.updateBookingStatus = async (req, res) => {
       });
     }
 
+    // Get the note from either 'note' or 'notes' parameter
+    const noteContent = note || notes || `Status updated to ${status}`;
+    
     // Update booking status
     booking.status = status;
     booking.statusHistory.push({
       status,
-      notes: notes || `Status updated to ${status}`
+      notes: noteContent
     });
 
     await booking.save();
