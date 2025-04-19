@@ -31,4 +31,9 @@ router.get('/housekeepers', adminAuth, adminController.getAllHousekeepers);
 // @access  Private/Admin
 router.get('/housekeepers/documents/:userId', adminAuth, adminController.getHousekeeperDocuments);
 
+// @route   PUT api/admin/housekeepers/status/:userId
+// @desc    Update housekeeper account status (enable/disable)
+// @access  Private/Admin
+router.put('/housekeepers/status/:userId', adminAuth, adminController.updateHousekeeperStatus);
+
 module.exports = router; 

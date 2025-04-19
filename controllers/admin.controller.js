@@ -179,4 +179,59 @@ exports.getHousekeeperDocuments = async (req, res) => {
     console.error('Error getting housekeeper documents:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
+};
+
+// @route   PUT api/admin/housekeepers/status/:userId
+// @desc    Update housekeeper active status
+// @access  Private/Admin
+exports.updateHousekeeperStatus = async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const { isActive, notes } = req.body;
+    
+    if (isActive === undefined) {
+      return res.status(400).json({ message: 'isActive field is required' });
+    }
+    
+    // Find the housekeeper
+    const housekeeper = await User.findById(userId);
+    
+    if (!housekeeper) {
+      return res.status(404).json({ message: 'Housekeeper not found' });
+    }
+    
+    if (housekeeper.userType !== 'housekeeper') {
+      return res.status(400).json({ message: 'User is not a housekeeper' });
+    }
+    
+    // Update the status
+    housekeeper.isActive = isActive;
+    housekeeper.statusNotes = notes || '';
+    housekeeper.statusUpdateDate = new Date();
+    
+    // Add to status history
+    housekeeper.statusHistory.push({
+      status: isActive ? 'active' : 'disabled',
+      date: new Date(),
+      notes: notes || ''
+    });
+    
+    await housekeeper.save();
+    
+    res.json({
+      message: `Housekeeper account ${isActive ? 'enabled' : 'disabled'} successfully`,
+      housekeeper: {
+        id: housekeeper._id,
+        firstName: housekeeper.firstName,
+        lastName: housekeeper.lastName,
+        email: housekeeper.email,
+        isActive: housekeeper.isActive,
+        statusNotes: housekeeper.statusNotes,
+        statusUpdateDate: housekeeper.statusUpdateDate
+      }
+    });
+  } catch (error) {
+    console.error('Error updating housekeeper status:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
 }; 
