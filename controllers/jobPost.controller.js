@@ -474,7 +474,7 @@ exports.getMyApplications = async (req, res) => {
     const skip = (page - 1) * limit;
     
     // Find job posts where user has applied
-    const query = { 'applicants.userId': mongoose.Types.ObjectId(req.user.id) };
+    const query = { 'applicants.userId': req.user.id };
     
     if (status) {
       query['applicants.status'] = status;
