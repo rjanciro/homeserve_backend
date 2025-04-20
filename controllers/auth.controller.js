@@ -186,6 +186,11 @@ const authController = {
         });
       }
 
+      // Set user as online
+      user.isOnline = true;
+      user.lastSeen = new Date();
+      await user.save();
+
       // Create JWT token
       const token = jwt.sign(
         { 
@@ -205,7 +210,8 @@ const authController = {
           lastName: user.lastName,
           email: user.email,
           userType: user.userType,
-          isEmailVerified: user.isEmailVerified
+          isEmailVerified: user.isEmailVerified,
+          isOnline: user.isOnline
         }
       });
     } catch (error) {
@@ -471,6 +477,28 @@ const authController = {
       res.status(200).json({ message: 'Password changed successfully' });
     } catch (error) {
       console.error('Verify password change PIN error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  logout: async (req, res) => {
+    try {
+      const userId = req.user.userId;
+      
+      // Find the user
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      
+      // Set user as offline
+      user.isOnline = false;
+      user.lastSeen = new Date();
+      await user.save();
+      
+      return res.status(200).json({ message: 'Logged out successfully' });
+    } catch (error) {
+      console.error('Logout error:', error);
       res.status(500).json({ message: 'Server error' });
     }
   }

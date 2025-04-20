@@ -8,8 +8,8 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-// Connected clients map (userId -> WebSocket connection)
-const clients = new Map();
+// Connected clients map (userId -> {connectionCount, connections[]})
+const clientsStore = new Map();
 
 // Start WebSocket server
 const startWebSocketServer = () => {
@@ -33,6 +33,10 @@ const startWebSocketServer = () => {
     console.log('New client connected');
     let userId = null;
 
+    // Add custom ID to websocket for debugging
+    ws.id = Math.random().toString(36).substring(2, 10);
+    console.log(`Assigned connection ID: ${ws.id}`);
+
     // Welcome message
     ws.send(JSON.stringify({
       type: 'welcome',
@@ -43,7 +47,7 @@ const startWebSocketServer = () => {
     ws.on('message', async (message) => {
       try {
         const data = JSON.parse(message);
-        console.log('Received message:', data.type);
+        console.log(`Received message (${ws.id}):`, data.type);
 
         // Handle authentication
         if (data.type === 'auth') {
@@ -51,10 +55,34 @@ const startWebSocketServer = () => {
             const decoded = jwt.verify(data.token, process.env.JWT_SECRET);
             userId = decoded.userId;
             
-            // Store connection in clients map
-            clients.set(userId, ws);
+            console.log(`User ${userId} authenticated on connection ${ws.id}`);
             
-            console.log(`User ${userId} authenticated`);
+            // Add connection to user's connections
+            if (!clientsStore.has(userId)) {
+              console.log(`Creating new connection record for user ${userId}`);
+              clientsStore.set(userId, {
+                connectionCount: 0,
+                connections: []
+              });
+            }
+            
+            const userConnections = clientsStore.get(userId);
+            userConnections.connectionCount++;
+            userConnections.connections.push(ws);
+            
+            console.log(`User ${userId} now has ${userConnections.connectionCount} active connections`);
+            
+            // Update user's online status in database if they weren't already online
+            const user = await User.findById(userId);
+            if (!user.isOnline) {
+              console.log(`Marking user ${userId} as online in database`);
+              user.isOnline = true;
+              user.lastSeen = new Date();
+              await user.save();
+              
+              // Broadcast user's online status to other connected users
+              broadcastUserStatus(userId, true);
+            }
             
             // Send authentication success response
             ws.send(JSON.stringify({
@@ -62,6 +90,7 @@ const startWebSocketServer = () => {
               userId,
               messageId: `auth-success-${Date.now()}`
             }));
+            
           } catch (error) {
             console.error('Authentication error:', error);
             ws.send(JSON.stringify({
@@ -70,6 +99,35 @@ const startWebSocketServer = () => {
               messageId: `auth-error-${Date.now()}`
             }));
           }
+        }
+        
+        // Handle user manually setting their status
+        else if (data.type === 'set_status') {
+          if (!userId) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              error: 'Not authenticated',
+              messageId: `error-${Date.now()}`
+            }));
+            return;
+          }
+          
+          const { isOnline } = data;
+          
+          // Update user's online status in database
+          await User.findByIdAndUpdate(userId, {
+            isOnline: isOnline,
+            lastSeen: isOnline ? new Date() : new Date()
+          });
+          
+          // Broadcast user's online status to other connected users
+          broadcastUserStatus(userId, isOnline);
+          
+          ws.send(JSON.stringify({
+            type: 'status_updated',
+            isOnline,
+            messageId: `status-${Date.now()}`
+          }));
         }
         
         // Handle ping messages to keep connection alive
@@ -95,7 +153,7 @@ const startWebSocketServer = () => {
           const conversations = await Conversation.find({ 
             participants: userId 
           })
-          .populate('participants', 'firstName lastName profileImage userType')
+          .populate('participants', 'firstName lastName profileImage userType isOnline lastSeen')
           .populate('lastMessage')
           .sort('-updatedAt')
           .exec();
@@ -212,7 +270,7 @@ const startWebSocketServer = () => {
           }));
           
           // Send message to receiver if online
-          const receiverWs = clients.get(receiverId);
+          const receiverWs = clientsStore.get(receiverId)?.connections.find(conn => conn.readyState === WebSocket.OPEN);
           if (receiverWs) {
             receiverWs.send(JSON.stringify({
               type: 'new_message',
@@ -335,22 +393,80 @@ const startWebSocketServer = () => {
           );
         }
       } catch (error) {
-        console.error('Error processing message:', error);
-        ws.send(JSON.stringify({
-          type: 'error',
-          error: 'Invalid message format',
-          messageId: `error-${Date.now()}`
-        }));
+        console.error('WebSocket message error:', error);
       }
     });
-
-    ws.on('close', () => {
-      console.log('Client disconnected');
+    
+    // Handle client disconnection
+    ws.on('close', async () => {
       if (userId) {
-        clients.delete(userId);
+        console.log(`Connection ${ws.id} for user ${userId} closed`);
+        
+        // Remove this connection from user's connections
+        if (clientsStore.has(userId)) {
+          const userConnections = clientsStore.get(userId);
+          
+          // Remove this specific connection
+          userConnections.connections = userConnections.connections.filter(conn => conn !== ws);
+          userConnections.connectionCount = Math.max(0, userConnections.connectionCount - 1);
+          
+          console.log(`User ${userId} now has ${userConnections.connectionCount} active connections`);
+          
+          // If user has no more connections, mark them as offline
+          if (userConnections.connectionCount === 0) {
+            console.log(`User ${userId} has no more connections, marking as offline`);
+            
+            // Update user status in database
+            await User.findByIdAndUpdate(userId, {
+              isOnline: false,
+              lastSeen: new Date()
+            });
+            
+            // Remove user from clients store
+            clientsStore.delete(userId);
+            
+            // Broadcast user's offline status
+            broadcastUserStatus(userId, false);
+          }
+        }
       }
     });
   });
+  
+  // Function to broadcast user status change to other connected users
+  const broadcastUserStatus = async (userId, isOnline) => {
+    const user = await User.findById(userId).select('firstName lastName userType profileImage');
+    
+    if (!user) return;
+    
+    console.log(`Broadcasting status change: ${user.firstName} ${user.lastName} is now ${isOnline ? 'online' : 'offline'}`);
+    
+    // Prepare status update message
+    const statusUpdate = {
+      type: 'user_status_change',
+      user: {
+        _id: userId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        userType: user.userType,
+        profileImage: user.profileImage
+      },
+      isOnline,
+      timestamp: Date.now(),
+      messageId: `status-update-${Date.now()}`
+    };
+    
+    // Send to all connected users across all connections except the user's own connections
+    for (const [clientId, clientData] of clientsStore.entries()) {
+      if (clientId !== userId) {
+        for (const clientWs of clientData.connections) {
+          if (clientWs.readyState === WebSocket.OPEN) {
+            clientWs.send(JSON.stringify(statusUpdate));
+          }
+        }
+      }
+    }
+  };
 
   const port = process.env.WS_PORT || 8081;
   server.listen(port, () => {

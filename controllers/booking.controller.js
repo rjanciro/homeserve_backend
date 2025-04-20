@@ -7,13 +7,18 @@ const User = require('../models/user.model');
  */
 exports.createBooking = async (req, res) => {
   try {
+    console.log('Received booking request:', req.body);
+    console.log('User making request:', req.user);
+    
     const { serviceId, date, time, location, contactPhone, notes } = req.body;
 
     // Get the current authenticated user (customer)
     const customerId = req.user.id;
+    console.log('Customer ID:', customerId);
 
     // Validate required fields
     if (!serviceId || !date || !time || !location || !contactPhone) {
+      console.log('Missing required fields in booking request:', { serviceId, date, time, location, contactPhone });
       return res.status(400).json({ 
         message: 'Service ID, date, time, location, and contact phone are required' 
       });
@@ -21,6 +26,7 @@ exports.createBooking = async (req, res) => {
 
     // Get service details to check if it exists and to get the housekeeper ID
     const service = await Service.findById(serviceId);
+    console.log('Found service:', service ? service._id : 'Not found');
     
     if (!service) {
       return res.status(404).json({ message: 'Service not found' });
@@ -43,8 +49,10 @@ exports.createBooking = async (req, res) => {
       }]
     });
 
+    console.log('Saving new booking:', newBooking);
     // Save the booking
     await newBooking.save();
+    console.log('Booking saved successfully with ID:', newBooking._id);
 
     res.status(201).json({
       message: 'Booking created successfully',
@@ -167,9 +175,10 @@ exports.updateBookingStatus = async (req, res) => {
 
     if (status === 'cancelled' && 
         booking.customer.toString() !== userId && 
+        booking.housekeeper.toString() !== userId && 
         req.user.userType !== 'admin') {
       return res.status(403).json({ 
-        message: 'Only the customer or admin can cancel bookings' 
+        message: 'Only the customer, housekeeper or admin can cancel bookings' 
       });
     }
 

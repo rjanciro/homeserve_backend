@@ -94,7 +94,8 @@ exports.updateProfile = async (req, res) => {
       'businessName', 'businessDescription', 'bio',
       'houseNumber', 'streetName', 'barangay', 
       'cityMunicipality', 'province', 'zipCode',
-      'latitude', 'longitude', 'experience', 'specialties'
+      'latitude', 'longitude', 'experience', 'specialties',
+      'isAvailable'  // Add isAvailable to allowed updates
     ];
     
     console.log('Before filtering:', Object.keys(updates));

@@ -27,5 +27,6 @@ router.post('/resend-verification', authController.resendVerificationEmail);
 router.post('/verify-pin', authController.verifyPin);
 router.post('/request-password-change-pin', auth, authController.requestPasswordChangePin);
 router.post('/verify-password-change-pin', auth, authController.verifyPasswordChangePin);
+router.post('/logout', auth, authController.logout);
 
 module.exports = router;

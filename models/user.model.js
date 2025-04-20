@@ -54,6 +54,14 @@ const UserSchema = new Schema({
     type: Boolean,
     default: true
   },
+  isOnline: {
+    type: Boolean,
+    default: false
+  },
+  lastSeen: {
+    type: Date,
+    default: null
+  },
   statusNotes: {
     type: String,
     default: ''
@@ -167,6 +175,10 @@ const HousekeeperSchema = User.discriminator('housekeeper', new Schema({
         longitude: this.longitude
       };
     }
+  },
+  isAvailable: {
+    type: Boolean,
+    default: true
   },
   isVerified: {
     type: Boolean,
